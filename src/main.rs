@@ -1,14 +1,10 @@
 use axum::{
-    routing::get, 
     Router, Extension,
-    extract::ConnectInfo,
-    response::Html
 };
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tower_livereload::LiveReloadLayer;
-use tower_http::services::ServeDir;
-use tower::ServiceBuilder;
+use tower_http::services::{ServeDir,ServeFile};
 
 #[derive(Clone)]
 struct Config {
@@ -23,14 +19,12 @@ async fn main() -> anyhow::Result<()> {
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], config.port));
 
+    let serve_dir = ServeDir::new("website"); //.not_found_service(ServeFile::new("website/index.html"));
+
     let app = Router::new()
-        .nest_service(
-            "/", 
-            ServiceBuilder::new()
-                .service(ServeDir::new("website"))
-        )
         .layer(LiveReloadLayer::new())
-        .layer(Extension(config));
+        .layer(Extension(config))
+        .fallback_service(serve_dir);
     
     let listener = TcpListener::bind(addr).await?;
 
