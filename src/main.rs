@@ -17,19 +17,17 @@ struct Config {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    //let config = configuration::get_configuration()?;
     let config = Config {
         port: 3030
     };
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
+    let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], config.port));
 
     let app = Router::new()
-        .route("/", get(index))
         .nest_service(
-            "/static", 
+            "/", 
             ServiceBuilder::new()
-                .service(ServeDir::new("static"))
+                .service(ServeDir::new("website"))
         )
         .layer(LiveReloadLayer::new())
         .layer(Extension(config));
@@ -42,13 +40,4 @@ async fn main() -> anyhow::Result<()> {
     ).await?;
 
     Ok(())
-}
-
-async fn index(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> Html<String> {
-    let html = format!(
-        "<h1>This is a test!</h1>\n\
-         <img src=\"static/favicon.ico\"/>"
-    );
-
-    Html(html)
 }
