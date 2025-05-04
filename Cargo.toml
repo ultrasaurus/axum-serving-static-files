@@ -10,4 +10,7 @@ notify = "8.0.0"
 tokio = {version = "1.44.2", features = ["full"]}
 tower = "0.5.2"
 tower-http = {version = "0.6.2", features = ["fs"]}
+tower-layer = "0.3.3"
 tower-livereload = "0.9.6"
+tower-service = "0.3.3"
+url-escape = "0.1.1"

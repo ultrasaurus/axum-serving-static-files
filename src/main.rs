@@ -7,7 +7,8 @@ use std::{net::SocketAddr, path::Path};
 use tokio::net::TcpListener;
 use tower_livereload::LiveReloadLayer;
 use tower_http::services::{ServeDir,ServeFile};
-
+mod bare_url;
+use bare_url::SanitizePathLayer;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -17,8 +18,9 @@ async fn main() -> anyhow::Result<()> {
     let reloader = livereload.reloader();
 
     let app = Router::new()
-        .route("/{*key}", any_service(ServeDir::new("website")))
         .route("/", any_service(ServeFile::new("website/index.html")))
+        .route("/{*key}", any_service(ServeDir::new("website")))
+        .layer(SanitizePathLayer)
         .layer(livereload);
 
     let mut watcher = notify::recommended_watcher(move |_| reloader.reload())?;
