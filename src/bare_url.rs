@@ -1,10 +1,9 @@
 use std::{
-    borrow::Cow,
     path::{Path, PathBuf},
     task::{Context, Poll},
 };
 
-use axum::http::{Request, Response, Uri};
+use axum::http::{uri::PathAndQuery, Request, Response, Uri};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -30,22 +29,22 @@ impl<S> Layer<S> for BareUrlLayer {
 
     fn layer(&self, inner: S) -> Self::Service {
         println!("BareUrlLayer");
-        BareUrl::setup_service(inner)
+        BareUrl::setup_service(inner, &self.local_dir)
     }
 }
 
-/// Middleware to remove filesystem path traversals attempts from URL paths.
-///
-/// See the [module docs](self) for more details.
-#[derive(Clone, Copy, Debug)]
+/// Middleware to support "bare urls" (without .html extension)
+#[derive(Clone, Debug)]
 pub struct BareUrl<S> {
     inner: S,
+    local_dir: PathBuf
 }
 
 impl<S> BareUrl<S> {
     /// Setup given service so BareUrl will be called to fix URLs before calling it
-    pub fn setup_service(inner: S) -> Self {
-        Self { inner }
+    pub fn setup_service<P: AsRef<Path>>(inner: S, path: P) -> Self {
+        println!("BareUrl setup_service with local_dir: {}", path.as_ref().display());
+        Self { inner, local_dir: PathBuf::from(path.as_ref()) }
     }
 
     #[allow(unused)]
@@ -70,34 +69,50 @@ where
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
         println!("BareUrl call: {}", req.uri());
-        sanitize_path(req.uri_mut());
+        let mut chars = req.uri().path().chars();
+        chars.next(); // remove initial '/' so its treated as relative path to local dir
+        let path_str: &str = chars.as_str();
+
+        let path = PathBuf::from(path_str);
+        match path.extension() {
+            None => {
+                println!("no extension");
+                println!("self.local_dir: {}",self.local_dir.display());
+                let local_path = self.local_dir.join(path_str);
+                println!("local_path: {}",local_path.display());
+                if !local_path.exists() {
+                    let alt_local_path = local_path.with_extension("html");
+                    println!("alt local_path: {}",alt_local_path.display());
+                    if alt_local_path.exists() {
+                        let new_path_string = format!("{}.html", req.uri().path());
+                        *req.uri_mut() = uri_with_path(req.uri(),&new_path_string);
+                    }
+                }
+            },
+            Some(ext) => {
+                println!("extension = {:?}", ext);
+                if ext == "html" {
+                    // redirect
+                }
+            }
+        }
         self.inner.call(req)
     }
 }
 
-fn sanitize_path(uri: &mut Uri) {
-    let path_str = uri.path();
+fn uri_with_path(uri: &Uri, new_path_str: &str) -> Uri {
     let mut parts = uri.clone().into_parts();
-    println!("sanitize_path: {}", path_str);
-    let path = PathBuf::from(path_str);
-    let ext = path.extension();
-    if ext == None {
-        let new_path = format!("{}.html", path_str);
-        if let Some(path_and_query) = parts.path_and_query {
-            let new_path_and_query = if let Some(query) = path_and_query.query() {
-                Cow::Owned(format!("{new_path}?{query}"))
-            } else {
-                new_path.into()
-            }
-            .parse()
-            .expect("url to still be valid");
-            parts.path_and_query = Some(new_path_and_query);
-            if let Ok(new_uri) = Uri::from_parts(parts) {
-                *uri = new_uri;
-            }
-        }
-    }
+    let new_path_and_query = 
+        if let Some(query) = uri.query() {
+            PathAndQuery::from_maybe_shared(format!("{new_path_str}?{query}"))
+        } else {
+            let path_bytes = new_path_str.to_string().as_bytes().to_owned();
+            PathAndQuery::from_maybe_shared(path_bytes)
+        }.expect("Uri to still be valid");
+    parts.path_and_query = Some(new_path_and_query);
+    Uri::from_parts(parts).expect("parts to be still valid")
 }
+
 
 #[cfg(test)]
 mod tests {
