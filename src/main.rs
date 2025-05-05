@@ -10,17 +10,20 @@ use tower_http::services::{ServeDir,ServeFile};
 mod bare_url;
 use bare_url::BareUrlLayer;
 
+const WEBSITE_DIR: &str = "website";
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 3030));
 
     let livereload = LiveReloadLayer::new();
+    let bare_url = BareUrlLayer::new(WEBSITE_DIR);
     let reloader = livereload.reloader();
 
     let app = Router::new()
         .route("/", any_service(ServeFile::new("website/index.html")))
         .route("/{*key}", any_service(ServeDir::new("website")))
-        .layer(BareUrlLayer)
+        .layer(bare_url)
         .layer(livereload);
 
     let mut watcher = notify::recommended_watcher(move |_| reloader.reload())?;

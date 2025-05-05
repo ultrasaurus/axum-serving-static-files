@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    path::PathBuf,
+    path::{Path, PathBuf},
     task::{Context, Poll},
 };
 
@@ -12,15 +12,25 @@ use tower_service::Service;
 ///
 /// See the [module docs](self) for more details.
 
-#[derive(Clone, Copy, Debug)]
-pub struct BareUrlLayer;
+#[derive(Clone, Debug)]
+pub struct BareUrlLayer {
+    local_dir: PathBuf
+}
+
+impl BareUrlLayer {
+    pub fn new<P: AsRef<Path>>(path: P) -> Self{
+        Self {
+            local_dir: PathBuf::from(path.as_ref())
+        }
+    }
+}
 
 impl<S> Layer<S> for BareUrlLayer {
     type Service = BareUrl<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
         println!("BareUrlLayer");
-        BareUrl::sanitize_paths(inner)
+        BareUrl::setup_service(inner)
     }
 }
 
@@ -33,13 +43,12 @@ pub struct BareUrl<S> {
 }
 
 impl<S> BareUrl<S> {
-    /// Sanitize all paths for the given service.
-    ///
-    /// This will make all paths on the URL safe for the service to consume.
-    pub fn sanitize_paths(inner: S) -> Self {
+    /// Setup given service so BareUrl will be called to fix URLs before calling it
+    pub fn setup_service(inner: S) -> Self {
         Self { inner }
     }
 
+    #[allow(unused)]
     /// Access the wrapped service.
     pub fn inner(&self) -> &S {
         &self.inner
