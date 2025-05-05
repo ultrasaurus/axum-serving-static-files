@@ -1,14 +1,12 @@
 use std::{
     borrow::Cow,
-    path::{Component, PathBuf},
-    str::FromStr,
+    path::PathBuf,
     task::{Context, Poll},
 };
 
-use axum::http::{Request, Response, Uri, uri::PathAndQuery};
+use axum::http::{Request, Response, Uri};
 use tower_layer::Layer;
 use tower_service::Service;
-use url_escape::decode;
 
 /// Layer that applies [`BareUrl`] which sanitizes paths.
 ///
