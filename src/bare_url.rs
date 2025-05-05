@@ -10,19 +10,19 @@ use tower_layer::Layer;
 use tower_service::Service;
 use url_escape::decode;
 
-/// Layer that applies [`SanitizePath`] which sanitizes paths.
+/// Layer that applies [`BareUrl`] which sanitizes paths.
 ///
 /// See the [module docs](self) for more details.
 
 #[derive(Clone, Copy, Debug)]
-pub struct SanitizePathLayer;
+pub struct BareUrlLayer;
 
-impl<S> Layer<S> for SanitizePathLayer {
-    type Service = SanitizePath<S>;
+impl<S> Layer<S> for BareUrlLayer {
+    type Service = BareUrl<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        println!("SanitizePathLayer");
-        SanitizePath::sanitize_paths(inner)
+        println!("BareUrlLayer");
+        BareUrl::sanitize_paths(inner)
     }
 }
 
@@ -30,11 +30,11 @@ impl<S> Layer<S> for SanitizePathLayer {
 ///
 /// See the [module docs](self) for more details.
 #[derive(Clone, Copy, Debug)]
-pub struct SanitizePath<S> {
+pub struct BareUrl<S> {
     inner: S,
 }
 
-impl<S> SanitizePath<S> {
+impl<S> BareUrl<S> {
     /// Sanitize all paths for the given service.
     ///
     /// This will make all paths on the URL safe for the service to consume.
@@ -48,7 +48,7 @@ impl<S> SanitizePath<S> {
     }
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for SanitizePath<S>
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for BareUrl<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
 {
@@ -62,7 +62,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        println!("SanitizePath call: {}", req.uri());
+        println!("BareUrl call: {}", req.uri());
         sanitize_path(req.uri_mut());
         self.inner.call(req)
     }
@@ -107,7 +107,7 @@ mod tests {
         }
 
         let mut svc = ServiceBuilder::new()
-            .layer(SanitizePathLayer)
+            .layer(BareUrlLayer)
             .service_fn(handle);
 
         let body = svc
