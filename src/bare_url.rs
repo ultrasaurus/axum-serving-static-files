@@ -1,70 +1,54 @@
-use std::{
-    path::{Path, PathBuf},
-    task::{Context, Poll},
-};
 
 use axum::http::{uri::PathAndQuery, Request, Response, Uri};
-use tower_layer::Layer;
+use bytes::Bytes;
+use std::{
+    convert::Infallible,
+    future::Future,
+    path::{Path, PathBuf},
+    pin::Pin,
+    task::{Context, Poll},
+};
+use tower_http::services::{ 
+    fs::{DefaultServeDirFallback, ServeFileSystemResponseBody},
+    ServeDir
+};
 use tower_service::Service;
 
-/// Layer that applies [`BareUrl`] which sanitizes paths.
-///
-/// See the [module docs](self) for more details.
 
+/// Middleware to support "bare urls" (without .html extension)
 #[derive(Clone, Debug)]
-pub struct BareUrlLayer {
-    local_dir: PathBuf
+pub struct BareUrlServeDir<DefaultServeDirFallback> {
+    inner: ServeDir,
+    local_dir: PathBuf,
+    fallback: Option<DefaultServeDirFallback>
 }
 
-impl BareUrlLayer {
-    pub fn new<P: AsRef<Path>>(path: P) -> Self{
-        Self {
-            local_dir: PathBuf::from(path.as_ref())
+impl BareUrlServeDir<DefaultServeDirFallback> {
+    /// Setup given service so BareUrl will be called to fix URLs before calling it
+    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+        Self { 
+            inner: ServeDir::new(path.as_ref()), 
+            local_dir: PathBuf::from(path.as_ref()),
+            fallback: None
         }
     }
 }
 
-impl<S> Layer<S> for BareUrlLayer {
-    type Service = BareUrl<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        println!("BareUrlLayer");
-        BareUrl::setup_service(inner, &self.local_dir)
-    }
-}
-
-/// Middleware to support "bare urls" (without .html extension)
-#[derive(Clone, Debug)]
-pub struct BareUrl<S> {
-    inner: S,
-    local_dir: PathBuf
-}
-
-impl<S> BareUrl<S> {
-    /// Setup given service so BareUrl will be called to fix URLs before calling it
-    pub fn setup_service<P: AsRef<Path>>(inner: S, path: P) -> Self {
-        println!("BareUrl setup_service with local_dir: {}", path.as_ref().display());
-        Self { inner, local_dir: PathBuf::from(path.as_ref()) }
-    }
-
-    #[allow(unused)]
-    /// Access the wrapped service.
-    pub fn inner(&self) -> &S {
-        &self.inner
-    }
-}
-
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for BareUrl<S>
+impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for BareUrlServeDir<F>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
+    ReqBody: Send + 'static,
+    F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
+    F::Future: Send + 'static,
+    FResBody: http_body::Body<Data = Bytes> + Send + 'static,
+    FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
+    type Response = Response<ServeFileSystemResponseBody>;
+    type Error = Infallible;
+    // type Future = InfallibleResponseFuture<ReqBody, F>;
+    type Future = Pin<Box<dyn Future<Output = Result<Response<ServeFileSystemResponseBody>, Infallible>> +Send >>;
 
-    #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
+        <ServeDir<DefaultServeDirFallback> as Service<Request<ReqBody>>>::poll_ready(&mut self.inner, cx)
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
@@ -89,16 +73,14 @@ where
                     }
                 }
             },
-            Some(ext) => {
-                println!("extension = {:?}", ext);
-                if ext == "html" {
-                    // redirect
-                }
-            }
+            _ => {}
         }
-        self.inner.call(req)
+
+
+        Box::pin(self.inner.call(req))
     }
 }
+
 
 fn uri_with_path(uri: &Uri, new_path_str: &str) -> Uri {
     let mut parts = uri.clone().into_parts();
@@ -113,106 +95,3 @@ fn uri_with_path(uri: &Uri, new_path_str: &str) -> Uri {
     Uri::from_parts(parts).expect("parts to be still valid")
 }
 
-
-#[cfg(test)]
-mod tests {
-    use std::convert::Infallible;
-
-    use tower::{ServiceBuilder, ServiceExt};
-
-    use super::*;
-
-    #[tokio::test]
-    async fn layer() {
-        async fn handle(request: Request<()>) -> Result<Response<String>, Infallible> {
-            Ok(Response::new(request.uri().to_string()))
-        }
-
-        let mut svc = ServiceBuilder::new()
-            .layer(BareUrlLayer)
-            .service_fn(handle);
-
-        let body = svc
-            .ready()
-            .await
-            .unwrap()
-            .call(Request::builder().uri("/../../secret").body(()).unwrap())
-            .await
-            .unwrap()
-            .into_body();
-
-        assert_eq!(body, "/secret");
-    }
-
-    #[test]
-    fn no_path() {
-        let mut uri = "/".parse().unwrap();
-        sanitize_path(&mut uri);
-
-        assert_eq!(uri, "/");
-    }
-
-    #[test]
-    fn maintain_query() {
-        let mut uri = "/?test".parse().unwrap();
-        sanitize_path(&mut uri);
-
-        assert_eq!(uri, "/?test");
-    }
-
-    #[test]
-    fn path_maintain_query() {
-        let mut uri = "/path?test=true".parse().unwrap();
-        sanitize_path(&mut uri);
-
-        assert_eq!(uri, "/path?test=true");
-    }
-
-    #[test]
-    fn remove_path_parent_traversal() {
-        let mut uri = "/../../path".parse().unwrap();
-        sanitize_path(&mut uri);
-
-        assert_eq!(uri, "/path");
-    }
-
-    #[test]
-    fn remove_path_parent_traversal_maintain_query() {
-        let mut uri = "/../../path?name=John".parse().unwrap();
-        sanitize_path(&mut uri);
-
-        assert_eq!(uri, "/path?name=John");
-    }
-
-    #[test]
-    fn remove_path_current_traversal() {
-        let mut uri = "/.././path".parse().unwrap();
-        sanitize_path(&mut uri);
-
-        assert_eq!(uri, "/path");
-    }
-
-    #[test]
-    fn remove_path_encoded_traversal() {
-        let mut uri = "/..%2f..%2fpath".parse().unwrap();
-        sanitize_path(&mut uri);
-
-        assert_eq!(uri, "/path");
-    }
-
-    #[test]
-    fn keep_trailing_slash() {
-        let mut uri = "/path/".parse().unwrap();
-        sanitize_path(&mut uri);
-
-        assert_eq!(uri, "/path/");
-    }
-
-    #[test]
-    fn keep_only_one_trailing_slash() {
-        let mut uri = "/path//".parse().unwrap();
-        sanitize_path(&mut uri);
-
-        assert_eq!(uri, "/path/");
-    }
-}

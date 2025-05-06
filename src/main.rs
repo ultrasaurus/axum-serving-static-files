@@ -6,9 +6,8 @@ use notify::Watcher;
 use std::{net::SocketAddr, path::Path};
 use tokio::net::TcpListener;
 use tower_livereload::LiveReloadLayer;
-use tower_http::services::{ServeDir,ServeFile};
 mod bare_url;
-use bare_url::BareUrlLayer;
+use bare_url::BareUrlServeDir;
 
 const WEBSITE_DIR: &str = "website";
 
@@ -17,13 +16,10 @@ async fn main() -> anyhow::Result<()> {
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 3030));
 
     let livereload = LiveReloadLayer::new();
-    let bare_url = BareUrlLayer::new(WEBSITE_DIR);
     let reloader = livereload.reloader();
 
     let app = Router::new()
-        .route("/", any_service(ServeFile::new("website/index.html")))
-        .route("/{*key}", any_service(ServeDir::new("website")))
-        .layer(bare_url)
+        .fallback(any_service(BareUrlServeDir::new(WEBSITE_DIR)))
         .layer(livereload);
 
     let mut watcher = notify::recommended_watcher(move |_| reloader.reload())?;
