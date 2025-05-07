@@ -14,6 +14,11 @@ use tower_http::services::{
 };
 use tower_service::Service;
 
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+mod test_helpers;
 
 /// Middleware to support "bare urls" (without .html extension)
 #[derive(Clone, Debug)]
@@ -26,6 +31,9 @@ pub struct BareUrlServeDir<DefaultServeDirFallback> {
 impl BareUrlServeDir<DefaultServeDirFallback> {
     /// Setup given service so BareUrl will be called to fix URLs before calling it
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
+        // let mut base = PathBuf::from(".");
+        // base.push(path.as_ref());
+
         Self { 
             inner: ServeDir::new(path.as_ref()), 
             local_dir: PathBuf::from(path.as_ref()),
@@ -75,8 +83,6 @@ where
             },
             _ => {}
         }
-
-
         Box::pin(self.inner.call(req))
     }
 }
