@@ -99,6 +99,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "bareurl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bytes",
+ "futures-util",
+ "http",
+ "http-body",
+ "http-body-util",
+ "notify",
+ "pin-project-lite",
+ "sync_wrapper",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tower-layer",
+ "tower-livereload",
+ "tower-service",
+ "url-escape",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -658,29 +681,6 @@ checksum = "4f5fd57c80058a56cf5c777ab8a126398ece8e442983605d280a44ce79d0edef"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "static-site"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "bytes",
- "futures-util",
- "http",
- "http-body",
- "http-body-util",
- "notify",
- "pin-project-lite",
- "sync_wrapper",
- "tokio",
- "tower",
- "tower-http",
- "tower-layer",
- "tower-livereload",
- "tower-service",
- "url-escape",
 ]
 
 [[package]]
