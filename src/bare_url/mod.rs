@@ -25,6 +25,7 @@ mod test_helpers;
 pub struct BareUrlServeDir<DefaultServeDirFallback> {
     inner: ServeDir,
     local_dir: PathBuf,
+    #[allow(unused)]
     fallback: Option<DefaultServeDirFallback>
 }
 
